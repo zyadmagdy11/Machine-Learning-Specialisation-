@@ -1,0 +1,179 @@
+
+print ("=======================================================")
+print ("-----------------------------------------------")
+
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from lab_utils_common import dlc
+from lab_coffee_utils import load_coffee_data, plt_roast, plt_prob, plt_layer, plt_network, plt_output_unit
+import logging
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
+tf.autograph.set_verbosity(0)
+
+
+X,Y = load_coffee_data()
+print(X)
+print(Y)
+print(X.shape, Y.shape)
+
+
+# plt_roast(X,Y)
+
+# def plt_roast_my_work(X,Y):
+#     pos = Y.reshape(-1,)==1
+#     neg = Y.reshape(-1,)==0
+
+#     fig,ax = plt.subplots(1,1 , figsize = (12,6))
+#     ax.scatter(X[pos,0] , X[pos,1] , marker='x' , color = 'r' , label= "Good roasting" )
+#     ax.scatter(X[neg,0] , X[neg,1] , marker='o' , color = 'b' , edgecolors= dlc['dlblue'] , facecolors = "None" , lw = 1 , label = "Bad roasting")
+
+#     x_line_1 = np.linspace(140,280,60)
+#     y_line_1 = np.ones(60)*12
+
+#     x_line_2 = np.ones(60)*175
+#     y_line_2 = np.linspace(11.5,15,60)
+
+#     x_line_3 = np.linspace(175,260,60)
+#     y_line_3 = np.linspace(15,12,60)
+
+#     ax.plot ( x_line_1 , y_line_1 , c = 'm')
+#     ax.plot ( x_line_2 , y_line_2 , c = 'm')
+#     ax.plot ( x_line_3 , y_line_3 , c = 'm')
+
+#     ax.set_title("Coffee Roasting")
+#     ax.set_xlabel ("Temperature\n(Celsius)")
+#     ax.set_ylabel ("Duration\n(minutes)")
+
+
+
+
+#     plt.show()
+
+# plt_roast_my_work(X,Y) 
+
+
+
+
+print(f"Temperature Max, Min pre normalization: {np.max(X[:,0]):0.2f}, {np.min(X[:,0]):0.2f}")
+print(f"Duration    Max, Min pre normalization: {np.max(X[:,1]):0.2f}, {np.min(X[:,1]):0.2f}")
+
+norm_l = tf.keras.layers.Normalization(axis=-1)
+norm_l.adapt(X)    # learns mean, variance
+Xn = norm_l(X)
+
+print(Xn)
+
+def Plot_Xn (Xn):
+    fig , ax = plt.subplots(1,1, figsize = (12,6))
+    ax.scatter (Xn[:,0] , Xn[: , 1] , marker = 'x' , c = 'r' , s = 70)
+    ax.axhline ( y = 0 , color = dlc["dlorange"] , lw = 0.2)
+    ax.axvline (x = 0 , color = dlc["dlorange"] ,lw = 0.2)
+    plt.show()
+
+#Plot_Xn(Xn)
+
+Xt = np.tile(Xn,(1000,1))
+Yt= np.tile(Y,(1000,1))   
+print(Xt.shape, Yt.shape)
+
+
+################################ Tensorflow Model ################################
+##################################################################################
+
+
+model = Sequential(
+    [
+        tf.keras.Input(shape=(2,)),
+        Dense(3, activation='sigmoid', name = 'layer1'),
+        Dense(1, activation='sigmoid', name = 'layer2')
+    ]
+)
+
+model.summary()
+
+#𝑊 should be of size (number of features in input, number of units in the layer)
+#𝑏  size should match the number of units in the layer
+
+W1, b1 = model.get_layer("layer1").get_weights()
+W2, b2 = model.get_layer("layer2").get_weights()
+print(f"W1{W1.shape}:\n", W1, f"\nb1{b1.shape}:", b1)
+print(f"W2{W2.shape}:\n", W2, f"\nb2{b2.shape}:", b2)
+
+print ("##########################################################")
+# model.compile(
+#     loss = tf.keras.losses.BinaryCrossentropy(),
+#     optimizer = tf.keras.optimizers.Adam(learning_rate=0.01),)
+
+# model.fit(
+#     Xt,Yt, epochs=10,)
+
+# model.fit     :      This statement runs gradient descent and fits the weights to the data. Adam Algorithm adjust Alpha To run Gradient Descent more faster 
+# model.compile :      statement defines a loss function and specifies a compile optimization.
+
+#It will aggressively consume The CPU So we will load some saved weights from a previous training run
+print ("##########################################################")
+
+
+
+W1 = np.array([
+    [-8.94,  0.29, 12.89],
+    [-0.17, -7.34, 10.79]] )
+b1 = np.array([-9.87, -9.28,  1.01])
+W2 = np.array([
+    [-31.38],
+    [-27.86],
+    [-32.79]])
+b2 = np.array([15.54])
+model.get_layer("layer1").set_weights([W1,b1])
+model.get_layer("layer2").set_weights([W2,b2])
+
+#After fitting, the weights have been updated:
+W1, b1 = model.get_layer("layer1").get_weights()
+W2, b2 = model.get_layer("layer2").get_weights()
+print("W1:\n", W1, "\nb1:", b1)
+print("W2:\n", W2, "\nb2:", b2)
+
+
+
+################################ Predictions #####################################
+##################################################################################
+
+
+X_test = np.array([
+    [200,13.9],  # postive example
+    [200,17]])   # negative example
+X_testn = norm_l(X_test)
+predictions = model.predict(X_testn)
+print("predictions = \n", predictions)
+
+y_predict = (predictions >=0.5).astype(int)
+print (y_predict)
+
+
+
+################################ Layer Functions #################################
+##################################################################################
+
+
+plt_layer(X,Y.reshape(-1,),W1,b1,norm_l)
+"""
+The shading shows that each unit is responsible for a different "bad roast" region.
+unit 0 has larger values when the temperature is too low.
+unit 1 has larger values when the duration is too short.
+unit 2 has larger values for bad combinations of time/temp.
+It is worth noting that the network learned these functions on its own through the process of gradient descent.
+They are very much the same sort of functions a person might choose to make the same decisions.
+"""
+
+plt_output_unit(W2,b2)
+
+netf= lambda x : model.predict(norm_l(x))
+plt_network(X,Y,netf)
+
+
+
+print ("-----------------------------------------------")
+print ("=======================================================")
